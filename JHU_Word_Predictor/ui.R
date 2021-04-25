@@ -52,7 +52,11 @@ shinyUI(fluidPage(
     ),
     fluidRow(
         column(12,
-               textOutput("prediction"))
+               tableOutput("prediction"))
+    ),
+    fluidRow(
+        column(12,
+               textOutput("model_info"))
     )
 )
 )
