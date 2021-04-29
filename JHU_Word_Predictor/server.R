@@ -481,21 +481,30 @@ readyToPredict <- function(inputtext) {
     }
     else {
         #get last letter for the input
-        last<-substr(inputtext,nchar(inputtext),nchar(inputtext))
-        if(last==" ") {
-            rslt<-tolower(inputtext)  
-        }
+        #last<-substr(inputtext,nchar(inputtext),nchar(inputtext))
+        #if(last==" " | last=="," | last=="!" | last=="." | last=="?") {
+        #    rslt<-tolower(inputtext)  
+        #}
+        text<-tokenize_v4(inputtext)
+        rslt<-paste(text[length(text)],collapse=" ")
     }
     
     rslt
 }
 
 usePattern <- function(inputtext) {
+    rslt<-TRUE
+    
     #get last character for the input
     last<-substr(inputtext,nchar(inputtext),nchar(inputtext))
     
+    
     #if last character is not a " ", then we use last characters as a pattern for our list
-    last!=" "
+    if(last==" " | last=="," | last=="!" | last=="." | last=="?") {
+        rslt<-FALSE
+    }
+    
+    rslt
 }
 
 
@@ -512,32 +521,43 @@ shinyServer(function(input, output) {
     
     
     output$transformed_text <- renderText({
-        transformed<-paste("Text used to predict:",readyToPredict(inputText()),sep=" ")
+        #init output
+        transformed<-"No text to use in prediction. Most probable words shown"
+        
+        #clean the input
+        text<-readyToPredict(inputText())
+        #get if last character is end of sentence
+        pat<-usePattern(inputText())
+        
+        if (text!="<empty>") {
+            if (pat) {
+                transformed<-paste("Using the text \"",text,"\", but last word is used as a pattern for the prediction for the other three (if possible)",collapse="")
+            }
+            else {
+                transformed<-paste("Using the text \"",text,"\" without pattern",collapse="")
+            }
+        }
+
         print(transformed)
         
     })
     
-    output$prediction <- renderText({
+    output$suggestion_list_size <- renderText({
+        t<-paste("The total words predicted are up to ",input$suggestions," words",sep="")
+    })
+    
+    output$prediction <- renderTable({
         patt<-usePattern(input$text)
         totalList<-input$suggestions
         
         sl<-getSuggesionList_v4(model,input$text,input$suggestions,patt)
-        if (length(sl)<totalList && patt) {
-            sl2<-getSuggesionList_v4(model,input$text,(input$suggestions-length(sl))*2,FALSE)
-            sl<-unique(c(sl,sl2))[1:totalList]
-        }
+        #if (length(sl)<totalList && patt) {
+        #    sl2<-getSuggesionList_v4(model,input$text,(input$suggestions-length(sl))*2,FALSE)
+        #    sl<-unique(c(sl,sl2))[1:totalList]
+        #}
         
         sl
-    })
+    },colnames=FALSE)
     
-    output$wd<-renderText({
-        #setwd("W:/prj/JHU_DS/QuantedaTutorials")
-        print(getwd())
-        #print("Hello")
-    })
-    
-    output$model_info<-renderText({
-        print(paste(str(model$g3),str(model$g3),str(model$g1)))
-    })
 })
 

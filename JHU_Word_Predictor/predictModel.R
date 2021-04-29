@@ -158,7 +158,7 @@ getSuggesionList_v4 <- function(model,sentence,list_length,use_pattern) {
         sugg<-sugg[!(third %in% suggestion_list)]
         
         #order by frequency
-        sugg<-sugg[order(-Prob)]
+        sugg<-sugg[order(-Prob,-freq)]
         if(use_pattern) {
             sugg<-grep(applyPattern,sugg[,third],value=TRUE)
         } else {
@@ -185,7 +185,7 @@ getSuggesionList_v4 <- function(model,sentence,list_length,use_pattern) {
         sugg<-sugg[!(second %in% suggestion_list)]
         
         #order by frequency
-        sugg<-sugg[order(-Prob)]
+        sugg<-sugg[order(-Prob,-freq)]
         if(use_pattern) {
             sugg<-grep(applyPattern,sugg[,second],value=TRUE)
         } else {
@@ -209,7 +209,7 @@ getSuggesionList_v4 <- function(model,sentence,list_length,use_pattern) {
         
         #we take the most probable unigrams
         dt<-(model$g1)[!(gram %in% suggestion_list)]
-        dt<-dt[order(-Prob)]
+        dt<-dt[order(-Prob,-freq)]
         
         if(use_pattern) {
             sugg<-grep(applyPattern,dt[,gram],value=TRUE)

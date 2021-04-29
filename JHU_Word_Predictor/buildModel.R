@@ -10,7 +10,10 @@ quanteda_options(threads=6)
 ##Alternative metaphor: number of # of word types seen to precede w / # of words preceding all words
 ## LAMBDA: normalizing constant; the probability mass we've discounted
 ## lambda(w i-1) = d/c(w i-1) | {w: c(w i-1, w)>0}|
-smoothingKneserNey<-function(model) {
+
+##param model: the trigram model to smooth
+##saveIntermediate: if TRUE, all intermediate calculations are preserved
+smoothingKneserNey<-function(model,saveIntermediate) {
     ##Application of Kneser-Ney in trigrams
     ###Our rule is: Pkn = max(CKn_i-d,0) / CKn_i_1 + lambda * Pcont (not provided more details for simplicity)
     ###In explanations, we will use wx as the xth word in each n-gram
@@ -47,46 +50,47 @@ smoothingKneserNey<-function(model) {
     #d is 0.75 now
     #FIRST TERM: max(CKnNum-0.75,0)/CKnDen
     #for a bigram w1, w2:
-    #firstTerm1 is the COUNT (different word types) in trigrams, which w1 w2 are the last in the trigram (those are w2 w3 in trigram)
-    #firstTerm2 is the COUNT (different word types) in trigrams, which w1 are the last in the trigrams (this is w3 in trigram)
+    #CKN Numerator is the COUNT (different word types) in trigrams, which w2 is the last in the trigram (those are w3 in trigram)
+    #CKN Denominator is the COUNT (different word types) in trigrams, which w1 is the last in the trigrams (this is w3 in trigram)
     
     d<-0.75
     
-    #CKnNum:
-    #extract counts for second and third w3 in trigrams, rename and setkey as first,second to be used in join
-    g3_w2w3_count<-model$g3[,.N,by=.(second,third)]
-    setnames(g3_w2w3_count,"second","first")
-    setnames(g3_w2w3_count,"third","second")
-    setnames(g3_w2w3_count,"N","w1_w2_as_w2_w3_Counts")
-    setkey(g3_w2w3_count,first,second)
+    #for both terms, we calculate the count by w3 in trigrams
+    dt3_w3_count<-model$g3[,.N,by=.(third)]
+    setnames(dt3_w3_count,"N","as_w3_Counts")
+    setnames(dt3_w3_count,"third","second")
+    setkey(dt3_w3_count,second)
     
-    #join dt2 with this aux join to set cknNumCount
-    dtjoin<-g3_w2w3_count[model$g2]
+    #CKnNum: we search bigram.second in the dt3_w3_count data.table
+    setkey(model$g2,second)
+    dtjoin<-dt3_w3_count[model$g2]
     setkey(dtjoin,first,second)
-    model$g2[,cknNumCount:=dtjoin[.(first,second),w1_w2_as_w2_w3_Counts]]
+    setkey(model$g2,first,second)
     
-    #when is NA, we set a 0
+    model$g2[,cknNumCount:=dtjoin[.(first,second),as_w3_Counts]]
+    
+    #set to 0 the possible nulls
     model$g2[model$g2[,is.na(cknNumCount)],cknNumCount:=0]
+    
+    #for the CKN denominator, we can use the same counts as w3 in trigrams. We prepare the object
+    setnames(dt3_w3_count,"second","first")
+    setkey(dt3_w3_count,first)
+    
+    #we join by first with model$g2
+    setkey(model$g2,first)
+    dtjoin<-dt3_w3_count[model$g2]
+    #reset the keys
+    setkey(dtjoin,first,second)
+    setkey(model$g2,first,second)
+    
+    model$g2[,cknDen:=dtjoin[.(first,second),as_w3_Counts]]
     
     #when firstTerm is <0.75, then we set to 0.75 to set the MAX for the term
     model$g2[,cknNum:=cknNumCount*1.0-0.75]
     model$g2[model$g2[,cknNum<0],cknNum:=0]
     
     
-    #firstTerm2:
-    #extract counts for w3 in trigrams (we can use w2 from the previous calculation)
-    dt3_w3_count<-model$g3[,.N,by=.(third)]
-    setnames(dt3_w3_count,"third","second")
-    setnames(dt3_w3_count,"N","w2_as_w3_Counts")
-    setkey(dt3_w3_count,second)
-    
-    setkey(model$g2,second)
-    dtjoin<-dt3_w3_count[model$g2]
-    setkey(dtjoin,first,second)
-    setkey(model$g2,first,second)
-    model$g2[,cknDen:=dtjoin[.(first,second),w2_as_w3_Counts]]
-    
-    model$g2[,firstTerm:=cknNum/cknDen]    
+    model$g2[,ckn:=cknNum/cknDen]
     
     #lambda: 
     #     d / c(w_i-1_) | {w: c(wi-1, w) > 0} |
@@ -109,13 +113,27 @@ smoothingKneserNey<-function(model) {
     model$g2[,pContNum:=.N,by=.(second)]
     model$g2[,pCont:=pContNum/pContDen]
     
-    model$g2[,Prob:=firstTerm+lambda*pCont]
+    model$g2[,Prob:=ckn+lambda*pCont]
     
     #for our purposes, the 1gram can be calculated in a simple way, selecting the top 100 elements
     model$g1<-model$g1[order(-freq)][1:5000]
     s<-sum(model$g1[,freq])
     model$g1[,Prob:=freq/s]
     setkey(model$g1,gram)
+    
+    if(!saveIntermediate) {
+        model$g2[,cknNumCount:=NULL]
+        model$g2[,cknDen:=NULL]
+        model$g2[,cknNum:=NULL]
+        model$g2[,ckn:=NULL]
+        model$g2[,lambdaDen:=NULL]
+        model$g2[,lambdaNum:=NULL]
+        model$g2[,lambda:=NULL]
+        model$g2[,pContNum:=NULL]
+        model$g2[,pCont:=NULL]
+        model$g3[,CKnDenom:=NULL]
+    }
+        
     
     model
 }
@@ -125,14 +143,15 @@ smoothingKneserNey<-function(model) {
 ##param path: path for the training files. Expecting the three files for the capstone
 ##param sampleplct: % sampling for each of the files
 ##param saveFile: name of the file to save the model, if desired. If "", then no saving
-buildModel <- function (path, sample_pct, saveFile) {
+##param debugModel: if TRUE, the model saves the internal calculation in smoothing
+buildModel <- function (datapath, sample_pct, saveFile, debugModel) {
     #seed
     set.seed(3435)
 
     #sample pct
     sppct<-sample_pct
     
-    tokenization<-tokenize_v4(loadCorpus_v4(path,sppct))
+    tokenization<-tokenize_v4(loadCorpus_v4(datapath,sppct))
     
     
     #build the document term matrix for each of the unigrams to five-grams
@@ -218,7 +237,7 @@ buildModel <- function (path, sample_pct, saveFile) {
     model$g2<-dtgrams2
     model$g3<-dtgrams3
     
-    model<-smoothingKneserNey(model)
+    model<-smoothingKneserNey(model,debugModel)
     
     if(saveFile!="") {
         saveModel_v4(model,saveFile)    
